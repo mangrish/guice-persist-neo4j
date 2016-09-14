@@ -1,4 +1,7 @@
-package io.innerloop.guice.persist.neo4j;
+package com.google.inject.persist.neo4j;
+
+import javax.inject.Inject;
+import java.lang.reflect.Method;
 
 import com.google.inject.persist.Transactional;
 import com.google.inject.persist.UnitOfWork;
@@ -7,11 +10,10 @@ import org.aopalliance.intercept.MethodInvocation;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.transaction.Transaction;
 
-import javax.inject.Inject;
-import java.lang.reflect.Method;
-
 /**
- * Created by markangrish on 11/04/2016.
+ * Transaction interceptor for Neo4j.
+ *
+ * @author mark.angrish@gmail.com (Mark Angrish)
  */
 class Neo4jLocalTxnInterceptor implements MethodInterceptor
 {
@@ -47,7 +49,7 @@ class Neo4jLocalTxnInterceptor implements MethodInterceptor
 
         if (txn != null)
         {
-            if (txn.status().equals(Transaction.Status.OPEN) || txn.status().equals(Transaction.Status.PENDING))
+            if (txn.status().equals(Transaction.Status.OPEN))
             {
                 return invocation.proceed();
             }
@@ -68,7 +70,6 @@ class Neo4jLocalTxnInterceptor implements MethodInterceptor
             {
                 txn.commit();
             }
-
             //propagate whatever exception is thrown anyway
             throw e;
         }
@@ -92,6 +93,8 @@ class Neo4jLocalTxnInterceptor implements MethodInterceptor
         }
         finally
         {
+            txn.close();
+
             //close the session if necessary
             if (null != workStarted.get())
             {
@@ -104,7 +107,7 @@ class Neo4jLocalTxnInterceptor implements MethodInterceptor
         return result;
     }
 
-    // TODO(dhanji): Cache this method's results.
+    // TODO(mangrish): Cache this method's results.
     private Transactional readTransactionMetadata(MethodInvocation methodInvocation)
     {
         Transactional transactional;
@@ -164,10 +167,16 @@ class Neo4jLocalTxnInterceptor implements MethodInterceptor
                 //rollback only if nothing matched the ignore check
                 if (!commit)
                 {
-                    txn.rollback();
+                    try
+                    {
+                        txn.rollback();
+                    }
+                    finally
+                    {
+                        txn.close();
+                    }
                 }
                 //otherwise continue to commit
-
                 break;
             }
         }
